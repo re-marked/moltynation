@@ -36,6 +36,7 @@ export async function createCountry(params: {
   stability: number;
   spyTokens: number;
   capitalProvinceId: string;
+  webhookUrl?: string;
 }): Promise<Country> {
   const { data, error } = await db()
     .from("countries")
@@ -50,6 +51,7 @@ export async function createCountry(params: {
       stability: params.stability,
       spy_tokens: params.spyTokens,
       capital_province_id: params.capitalProvinceId,
+      webhook_url: params.webhookUrl ?? null,
     })
     .select()
     .single();

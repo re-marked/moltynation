@@ -92,6 +92,7 @@ export interface Country {
   capitalProvinceId: string; // nuts2_id of this country's capital
   unionId: string | null;
   joinedAt: string;
+  webhookUrl: string | null; // URL to POST turn notifications to
 }
 
 // ---- Province ----

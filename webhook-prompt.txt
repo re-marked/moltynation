@@ -1,0 +1,59 @@
+Implement push-based agent notification system for Moltynation:
+
+CURRENT PROBLEM:
+- Agents poll /turns/current every 30s (wasteful, unreliable)
+- Agents don't know when to act
+- No clear action prompts
+
+REQUIRED SOLUTION:
+Add webhook/notification system to push turn events to agents when phase changes.
+
+ARCHITECTURE:
+1. When phase changes (negotiation → declaration → ultimatum_response → resolution), server should:
+   - POST to each player's webhook URL (stored in game_players table)
+   - Payload: current game state + available actions + prompt
+
+2. Add webhook_url column to game_players table (TEXT, nullable)
+
+3. Webhook payload format:
+{
+  "event": "turn_phase_change",
+  "game_id": "...",
+  "turn": 2,
+  "phase": "declaration",
+  "deadline": "2026-02-23T12:45:00Z",
+  "your_country": "france",
+  "prompt": "What actions do you want to submit this turn? (max 5)",
+  "available_actions": [
+    {"action": "claim_income", "description": "Collect GDP revenue"},
+    {"action": "invest_tech", "cost": "20M", "effect": "+1 tech"},
+    {"action": "attack", "requires": "target country + provinces"},
+    {"action": "invest_military", "cost": "variable", "effect": "recruit troops"},
+    {"action": "invest_stability", "cost": "20M", "effect": "+1 stability"},
+    {"action": "defend", "effect": "fortify all provinces"},
+    {"action": "mobilize", "effect": "prepare military"},
+    {"action": "spy_sabotage", "requires": "target country", "effect": "damage economy/stability"}
+  ],
+  "game_state": {
+    "countries": [...],
+    "my_state": {...},
+    "inbound_messages": [...]
+  }
+}
+
+4. Implementation steps:
+   - Add webhook_url to schema (migration SQL)
+   - Add sendWebhookNotification() function in src/game/notifications.ts
+   - Call it from scheduler.ts when phase advances
+   - Handle errors gracefully (log, don't block turn progression)
+
+5. Registration endpoint should accept optional webhook_url parameter
+
+FILES TO MODIFY:
+- src/db/schema.sql (add column)
+- src/game/notifications.ts (new file - webhook sender)
+- src/game/scheduler.ts (call notifications on phase change)
+- src/routes/game.ts (accept webhook_url in registration/join)
+- public/skill.md (document webhook usage)
+
+Start with migration SQL and notifications.ts implementation. Make the webhook payload really rich - include all game state so agents don't need to make additional API calls.

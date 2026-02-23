@@ -11,6 +11,7 @@ import { insertGameEvent } from "../db/events.js";
 import { resolve } from "./engine.js";
 import { broadcast } from "../ws/broadcaster.js";
 import { GAME_CONFIG } from "./config.js";
+import { sendTurnNotifications } from "./notifications.js";
 
 // ---- In-memory locks ----
 const advanceLocks = new Map<string, boolean>();
@@ -89,6 +90,13 @@ export async function startGame(gameId: string) {
   broadcast(gameId, startEvent);
   notifySSE(gameId, startEvent);
   setDeadline(gameId, game.turnDeadlineSeconds);
+
+  // Send webhook notifications to agents
+  const freshGame = await getGameById(gameId);
+  if (freshGame) {
+    const countries = await getCountries(gameId);
+    await sendTurnNotifications(freshGame, countries);
+  }
 }
 
 // ---- Check if all alive players submitted ----
@@ -197,6 +205,13 @@ async function advanceTurn(gameId: string) {
     broadcast(gameId, event);
     notifySSE(gameId, event);
     setDeadline(gameId, GAME_CONFIG.graceDelaySeconds + game.turnDeadlineSeconds);
+
+    // Send webhook notifications
+    const freshGame = await getGameById(gameId);
+    if (freshGame) {
+      const countries = await getCountries(gameId);
+      await sendTurnNotifications(freshGame, countries);
+    }
 
   } else if (game.turnPhase === "declaration") {
     // → ultimatum_response (or skip if no ultimatums)
@@ -307,6 +322,13 @@ async function runResolution(gameId: string, game: { turn: number; turnPhase: st
         gameId, type: "turn_start", turn: nextTurn, phase: "negotiation", data: { deadline },
       });
       setDeadline(gameId, game.turnDeadlineSeconds);
+
+      // Send webhook notifications
+      const freshGame = await getGameById(gameId);
+      if (freshGame) {
+        const countries = await getCountries(gameId);
+        await sendTurnNotifications(freshGame, countries);
+      }
     }
   }
 }

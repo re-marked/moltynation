@@ -143,7 +143,7 @@ game.get("/games/:id/countries", async (c) => {
 game.post("/games/:id/join", authMiddleware, async (c) => {
   const player = c.get("player");
   const gameId = c.req.param("id");
-  const body = (await c.req.json()) as { country_id?: string };
+  const body = (await c.req.json()) as { country_id?: string; webhook_url?: string };
 
   if (!body.country_id) {
     return c.json({ error: "country_id is required" }, 400);
@@ -188,6 +188,7 @@ game.post("/games/:id/join", authMiddleware, async (c) => {
     stability: starter.stability,
     spyTokens: starter.spyTokens,
     capitalProvinceId: starter.capitalProvinceId,
+    webhookUrl: body.webhook_url,
   });
 
   // Create provinces for this country
