@@ -286,11 +286,13 @@ export async function resolve(gameId: string) {
   // Query fresh province/country data — combat flips and annexations are now committed to DB
   const postCombatProvinces = await getProvinces(gameId);
   const postCombatCountries = await getCountries(gameId);
+  const postCombatWars = await getWars(gameId);
 
   const supplyResults = processSupplyAndRevolts({
     countries: postCombatCountries,
     provinces: postCombatProvinces,
     adjacencyMap,
+    wars: postCombatWars,
   });
   allResolutions.push(...supplyResults.resolutions);
 

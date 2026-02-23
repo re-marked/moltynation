@@ -11,6 +11,7 @@ export interface SupplyContext {
   countries: Country[];                   // full list, including eliminated
   provinces: Province[];                  // FRESH from DB after combat flips + annexations
   adjacencyMap: Map<string, string[]>;    // nuts2Id → adjacent nuts2Ids
+  wars: { attackerCountryId: string; defenderCountryId: string }[];  // active wars
 }
 
 export interface SupplyResults {
@@ -69,6 +70,13 @@ export function processSupplyAndRevolts(ctx: SupplyContext): SupplyResults {
   // Track provinces already revolted this pass to prevent double-processing
   const revolvedThisTurn = new Set<string>();
 
+  // Build set of countries that are AT WAR (for supply line checks)
+  const countriesAtWar = new Set<string>();
+  for (const war of ctx.wars) {
+    countriesAtWar.add(war.attackerCountryId);
+    countriesAtWar.add(war.defenderCountryId);
+  }
+
   for (const country of ctx.countries) {
     if (country.isEliminated) continue;
 
@@ -81,33 +89,36 @@ export function processSupplyAndRevolts(ctx: SupplyContext): SupplyResults {
     // MECHANIC 1: Supply Line Connectivity
     // Disconnected provinces (not reachable from capital via owned land)
     // have a 30% chance to revolt back to their original owner each turn.
+    // ONLY APPLIES WHEN THE COUNTRY IS AT WAR.
     // ================================================================
-    const connected = getConnectedProvinces(
-      country.capitalProvinceId,
-      ownedSet,
-      ctx.adjacencyMap
-    );
+    if (countriesAtWar.has(country.countryId)) {
+      const connected = getConnectedProvinces(
+        country.capitalProvinceId,
+        ownedSet,
+        ctx.adjacencyMap
+      );
 
-    const disconnected = owned.filter((p) => !connected.has(p.nuts2Id));
+      const disconnected = owned.filter((p) => !connected.has(p.nuts2Id));
 
-    for (const province of disconnected) {
-      if (revolvedThisTurn.has(province.nuts2Id)) continue;
-      if (Math.random() >= GAME_CONFIG.supplyRevoltChance) continue;
+      for (const province of disconnected) {
+        if (revolvedThisTurn.has(province.nuts2Id)) continue;
+        if (Math.random() >= GAME_CONFIG.supplyRevoltChance) continue;
 
-      const originalOwner = countryMap.get(province.originalOwnerId);
-      if (!originalOwner || originalOwner.isEliminated) continue;
+        const originalOwner = countryMap.get(province.originalOwnerId);
+        if (!originalOwner || originalOwner.isEliminated) continue;
 
-      revolvedThisTurn.add(province.nuts2Id);
-      provincesToRevolve.push({ nuts2Id: province.nuts2Id, newOwnerId: province.originalOwnerId });
-      addStability(country.countryId, -1);
+        revolvedThisTurn.add(province.nuts2Id);
+        provincesToRevolve.push({ nuts2Id: province.nuts2Id, newOwnerId: province.originalOwnerId });
+        addStability(country.countryId, -1);
 
-      resolutions.push({
-        type: "revolt",
-        countries: [country.countryId, province.originalOwnerId],
-        provinces: [province.nuts2Id],
-        description: `${province.name} is cut off from ${country.displayName}'s supply lines and revolts back to ${originalOwner.displayName}! (-1 stability)`,
-        stateChanges: [{ country: country.countryId, field: "stability", delta: -1 }],
-      });
+        resolutions.push({
+          type: "revolt",
+          countries: [country.countryId, province.originalOwnerId],
+          provinces: [province.nuts2Id],
+          description: `${province.name} is cut off from ${country.displayName}'s supply lines and revolts back to ${originalOwner.displayName}! (-1 stability)`,
+          stateChanges: [{ country: country.countryId, field: "stability", delta: -1 }],
+        });
+      }
     }
 
     // ================================================================
