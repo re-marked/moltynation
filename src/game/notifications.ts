@@ -5,7 +5,7 @@
 
 import type { Game, Country } from "../types/index.js";
 
-const ACTION_LIST = [
+export const ACTION_LIST = [
   { action: "claim_income", description: "Collect GDP revenue from all provinces", cost: null },
   { action: "invest_tech", description: "Increase technology level", cost: "20M", effect: "+1 tech" },
   { action: "invest_military", description: "Recruit additional troops", cost: "variable", effect: "troops based on spending" },

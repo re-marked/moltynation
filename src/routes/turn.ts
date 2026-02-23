@@ -18,6 +18,7 @@ import type { NegotiationMessage, SubmittedAction } from "../types/index.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { checkAndAdvanceTurn, subscribeToGameEvents } from "../game/scheduler.js";
 import { broadcast } from "../ws/broadcaster.js";
+import { ACTION_LIST } from "../game/notifications.js";
 
 const turn = new Hono();
 
@@ -357,19 +358,48 @@ turn.get("/turns/wait", authMiddleware, async (c) => {
       });
     };
 
+    // Enrich a phase-change event with full game state for this player
+    const enrichEvent = async (event: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      try {
+        const freshGame = await getActiveGame();
+        if (!freshGame || freshGame.id !== game.id) return event;
+
+        const freshCountry = await getCountryByPlayer(freshGame.id, player.id);
+        if (!freshCountry) return event;
+
+        const allCountries = await getCountries(freshGame.id);
+
+        return {
+          ...event,
+          game_id: freshGame.id,
+          your_country: freshCountry.countryId,
+          prompt: `What actions do you want to submit this turn? (Submit up to 5 actions via POST /turns/respond)`,
+          available_actions: ACTION_LIST,
+          game_state: {
+            countries: allCountries,
+            my_state: freshCountry,
+            world_tension: freshGame.worldTension ?? 0,
+          },
+        };
+      } catch {
+        return event;
+      }
+    };
+
     const unsubscribe = subscribeToGameEvents(game.id, push);
 
-    await stream.writeSSE({
-      data: JSON.stringify({
-        type: "connected",
-        game_id: game.id,
-        turn: game.turn,
-        phase: game.turnPhase,
-        deadline: game.turnDeadlineAt,
-      }),
+    // Send enriched initial connection event
+    const connectedEvent = await enrichEvent({
+      type: "connected",
+      game_id: game.id,
+      turn: game.turn,
+      phase: game.turnPhase,
+      deadline: game.turnDeadlineAt,
     });
+    await stream.writeSSE({ data: JSON.stringify(connectedEvent) });
 
     const HEARTBEAT_MS = 15_000;
+    const ENRICH_EVENTS = new Set(["phase_change", "turn_start", "game_start"]);
 
     try {
       while (!stream.closed) {
@@ -383,8 +413,12 @@ turn.get("/turns/wait", authMiddleware, async (c) => {
         if (result === null) {
           await stream.write(": heartbeat\n\n");
         } else {
-          await stream.writeSSE({ data: JSON.stringify(result) });
-          if ((result as { type?: string }).type === "game_end") break;
+          const eventType = (result as { type?: string }).type;
+          const toSend = eventType && ENRICH_EVENTS.has(eventType)
+            ? await enrichEvent(result as Record<string, unknown>)
+            : result;
+          await stream.writeSSE({ data: JSON.stringify(toSend) });
+          if (eventType === "game_end") break;
         }
       }
     } catch {
